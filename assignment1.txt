@@ -1,0 +1,626 @@
+import processing.opengl.*;
+float position = 0; float radius = 40;
+float floor = 600; float velocity = 5;
+PShape deathStar; PShape babyYoda; PShape rect; PShape laser;
+static int maxParticles = 1000;
+Vec3 spherePos = new Vec3(300,-100,300);
+Vec3 shapePos = new Vec3(400,-290,352);
+Vec3 initialPos = new Vec3(-100,50,100);
+float sphereRadius = 60;
+float r = 5;
+float genRate = 50;
+float obstacleSpeed = 200;
+float COR = 0.01;
+int x;
+Vec3 gravity = new Vec3(0,50,0);
+Camera camera;
+boolean red = false;
+boolean exploded = false;
+int j = 0;
+int f = 0;
+PShape[] explosion = new PShape[1001];
+PImage explode;
+//Initalalize variable
+Vec3 pos[] = new Vec3[maxParticles];
+Vec3 vel[] = new Vec3[maxParticles];
+Vec3 laserPos[] = new Vec3[maxParticles];
+Vec3 laserVel[] = new Vec3[maxParticles];
+Boolean[] collide = new Boolean[maxParticles];
+int numParticles = 0;
+int laserParticles = 0;
+int dscol = 200;
+boolean shrink = false;
+boolean firework = false;
+boolean doomsday = false;
+int result = 0;
+PImage bg;
+int floorr = 255; int floorg = 180; int floorb = 89;
+
+public int explosionEnumerator(int n){
+  println("enumerator case is: "+n);
+  switch(n){
+    case 0:
+      result = color(173, 26, 0);
+      break;
+    case 1:
+      result = color(240, 10, 0);
+      break;
+    case 2:
+      result = color(224, 213, 0);
+      break;
+  }
+  return result;
+}
+
+void setup() {
+  size(1000, 1000, P3D); noStroke(); //600x600 3D win
+  for( int i = 0; i < maxParticles; i++){
+    collide[i] = false;
+  }
+  bg = loadImage("flames.jpg");
+  bg.resize(1000,1000);
+  babyYoda = loadShape("BabyYodaComplete.obj");
+  deathStar = loadShape("death_star.obj");
+  babyYoda.scale(15);
+  deathStar.scale(250);
+  babyYoda.rotateX(PI);
+  babyYoda.rotateY(3.9);
+  deathStar.rotateX(PI);
+  deathStar.rotateY(PI/2);
+  explode = loadImage("explode.png");
+  fill(255, 180, 89);
+  rect = createShape(RECT, -1000, -1000, 400000, 400000);
+  rect.rotateX(PI/2);
+  camera = new Camera();
+}
+
+void update(float dt){
+  float toGen_float = genRate * dt;
+  int toGen = int(toGen_float);
+  float fractPart = toGen_float - toGen;
+  if (random(1) < fractPart) toGen += 1;
+  for (int i = 0; i < toGen; i++){
+    if (numParticles >= maxParticles) break;
+    if(doomsday) break;
+    pos[numParticles] = new Vec3(initialPos.x+20+random(10),initialPos.y-40+random(5),initialPos.z+random(5));
+    vel[numParticles] = new Vec3(100+random(30),spherePos.y/2+random(30),75+random(45));
+    numParticles += 1;
+  }
+  for (int p = 0; p < toGen; p++){
+    if (laserParticles >= maxParticles) break;
+    laserPos[laserParticles] = new Vec3(spherePos.x,spherePos.y,spherePos.z);
+    laserVel[laserParticles] = new Vec3(100+random(30),500+random(30),0+random(30));
+    laserParticles += 1;
+    //doomsday = true;
+ }
+    for (int i = 0; i <  numParticles; i++){
+      pos[i].add(vel[i].times(dt));
+
+      if (pos[i].distanceTo(shapePos) < (260) && exploded == false){
+        collide[i] = true;
+        Vec3 normal = (pos[i].minus(shapePos)).normalized();
+        pos[i] = shapePos.plus(normal.times(260).times(1.01));
+        Vec3 velNormal = normal.times(dot(vel[i],normal));
+        vel[i].subtract(velNormal.times(1));
+      }
+      if (pos[i].distanceTo(shapePos) > 260 && collide[i] == true && exploded == false){
+        Vec3 normal = (pos[i].minus(shapePos)).normalized();
+        pos[i] = shapePos.plus(normal.times(260).times(1.01));
+        Vec3 velNormal = new Vec3(normal.x*3, normal.y*3, normal.z*3);
+        vel[i].subtract(velNormal.times(1));
+      }
+      pos[i].y -= 1*2.9;
+      vel[i].y += (0.1);
+
+    if(shapePos.y < -700 && red == false){
+      deathStar.setFill(color(255,0,0));
+      red = true;
+    }
+
+    if(shapePos.y < -810 && !shrink){
+      int count = 0;
+      for(int c = 0; c < maxParticles; c++){
+        if(collide[c] == true){
+          count++;
+        }
+      }
+      if(count > 500){
+       deathStar.scale(0.001);
+      }else{
+        doomsday = true;
+        for (int p = 0; p < toGen; p++){
+          if (laserParticles >= maxParticles) break;
+          laserPos[laserParticles] = new Vec3(-100,-50,100);
+          laserVel[laserParticles] = new Vec3(100+random(30),-100+random(30),0+random(30));
+          laserParticles += 1;
+        }
+      }
+      shrink = true;
+    }
+    if(shapePos.y <= -810 && !exploded){
+      exploded = true;
+      babyYoda.rotateX(PI/2);
+      fill(255,0,0);
+      vel[i].add(new Vec3(-1000, 1000, -1000));
+      pos[i] = new Vec3(1000,1000,1000);
+      pos[i].add(vel[i].times(dt));
+    }
+    if(shapePos.y <= -810){
+     // background(0);
+      //specular(120, 120, 180);  //Set up lights…
+      //lightSpecular(255,255,200); shininess(100);  //More light…
+      //directionalLight(200, 200, 200, -1, 1, -1);
+      //float n = 0.1;
+      //while(n < PI/2){
+      //  n += 0.1;
+      //  babyYoda.rotateX(n);
+      //}
+      //firework = true;
+    }
+    if(doomsday){
+      shapePos.y += 5;
+      spherePos.y -= 0.1;
+      pos[i].y += 10;
+      vel[i].y = 0;
+    }
+  }
+  if(shapePos.y > -900){
+    shapePos.y -= 1;
+    spherePos.y -= 1;
+  }
+  if(doomsday){
+    if(f < 100){
+      deathStar.scale(1.02);
+    }
+    f++;
+    for (int r = 0; r < laserParticles; r++){
+      laserPos[r].add(laserVel[r].times(dt));
+      //Vec3 normal = (laserPos[r].minus(shapePos)).normalized();
+      //laserPos[r] = shapePos.plus(normal.times(260).times(1.01));
+      //Vec3 velNormal = normal.times(dot(laserVel[r],normal));
+      //laserVel[r].subtract(velNormal.times(1));
+    }
+    rect.setFill(color(floorr -= 4, floorg -= 8, floorb -= 12));
+  }
+}
+void keyPressed(){
+  if ( key == 'z' ){
+    initialPos.z += -10;
+    //shapePos.z += -10;
+    for(int i = 0; i < numParticles; i++){
+      vel[i].z += -10;
+      pos[i].z += -10;
+    }
+  }
+  if ( key == 'x' ){
+    initialPos.z -= -10;
+    for(int i = 0; i < numParticles; i++){
+      pos[i].z -= -10;
+      vel[i].z -= -10;
+    }
+  }
+  if ( key == 'i' ){
+   shapePos.z -= 10;
+   spherePos.z -= 10;
+  }
+  if ( key == 'j' ){
+   shapePos.x -= 10;
+   spherePos.x -= 10;
+  }
+  if ( key == 'k' ){
+   shapePos.z += 10;
+   spherePos.z += 10;
+  }
+  if ( key == 'l' ){
+   shapePos.x += 10;
+   spherePos.x += 10;
+  }
+  if ( key == 'c' ){
+  //  initialPos.y -= -10;
+    for(int i = 0; i < numParticles; i++){
+      pos[i].y -= -10;
+      vel[i].y -= -10;
+    }
+  }
+  if ( key == 'v' ){
+    for(int i = 0; i < numParticles; i++){
+      pos[i].y += -10;
+      vel[i].y += -10;
+    }
+  }
+  if ( key == 't' ){
+    doomsday = true;
+  }
+  camera.HandleKeyPressed();
+}
+
+void keyReleased(){
+  camera.HandleKeyReleased();
+    //if ( key == 'z' ){
+    //spherePos.z -= -10;
+    //shapePos.z -= -10;
+    //for(int i = 0; i < numParticles; i++){
+    //  pos[i].z += -10;
+    //  pos[i].times(dot(vel[i],pos[i]));
+    //}
+  //}
+}
+
+PImage clearColor(PImage image, int maskColor) {
+    PImage newImage = createImage(image.width, image.height, ARGB);
+    image.loadPixels();
+    newImage.loadPixels();
+    for(int n = 0; n < newImage.pixels.length; n++)
+        newImage.pixels[n] = image.pixels[n] == maskColor ? 0x00000000 : image.pixels[n] | 0xff000000;
+    newImage.updatePixels();
+    return newImage;
+}
+float bgr = 38;
+float bgg = 183;
+float bgb = 255;
+
+void draw() {
+  shape(babyYoda, 80, 80);
+  if(shapePos.y > -400){
+  background(bgr, bgg, bgb); //cyan background
+  }else{
+    if(bgr < 209){bgr+=1;}
+    if(bgg > 63){bgg-=1;}
+    //209, 63, 0
+    background(bgr,bgg,bgb-=1);
+  }
+  if(doomsday){
+    background(bg);
+  }
+  for (int i = 0; i < numParticles; i++){
+    pushMatrix();
+    translate(pos[i].x,pos[i].y,pos[i].z);
+    //fill(69, 208, 255, 10);
+    sphere(3);
+    popMatrix();
+  }
+  int count = 0;
+  for(int c = 0; c < maxParticles; c++){
+    if(collide[c] == true){
+      count++;
+    }
+  }
+  if(shapePos.y < -650 && shapePos.y > -800 && j < 1000 && count > 500){
+   deathStar.setFill(color(dscol+20,dscol,dscol));
+   dscol -= 1;
+   pushMatrix();
+   translate(shapePos.x-200+random(300),shapePos.y+200-random(400),shapePos.z-200+random(400));
+    x = int(0+floor(random(3)));
+    println(x);
+    explosion[j].setFill(explosionEnumerator(x));
+   shape(explosion[j]);
+   //explosion[j].setTexture("explode.png");
+   popMatrix();
+   j++;
+  }
+  if(doomsday){
+    for (int i = 0; i < laserParticles; i++){
+      pushMatrix();
+      fill(color(0,255,0));
+      shininess(100);
+      translate(laserPos[i].x,laserPos[i].y,laserPos[i].z);
+      sphere(100);
+      popMatrix();
+    }
+  }
+  fill(158, 245, 255, 200);          //Green material
+  specular(120, 120, 180);  //Set up lights…
+  ambientLight(20,20,20);   //More light…
+  lightSpecular(255,255,200); shininess(100);  //More light…
+  directionalLight(200, 200, 200, -1, 1, -1); //More light…
+  for(int j = 0; j <= 1000; j++){
+    hint(ENABLE_DEPTH_SORT);
+
+    explosion[j] = createShape(SPHERE, 30+random(40));
+    //noFill();
+    //fill(explosionEnumerator(int(random(2))));
+    //explosion[j].noFill();
+    //explosion[j].setTexture(explode);
+    //noFill();
+    explosion[j].rotateY(random(0.1));
+    hint(DISABLE_DEPTH_SORT);
+  }
+  //baby yoda
+  pushMatrix();
+  translate(initialPos.x,initialPos.y,initialPos.z);
+  shape(babyYoda);
+  popMatrix();
+  pushMatrix();
+  translate(spherePos.x,spherePos.y,spherePos.z);
+  shape(deathStar);
+  popMatrix();
+  pushMatrix();
+  translate(-1400,50,-1200);
+  shape(rect);
+  rotateY(PI);
+  popMatrix();
+  update(1.0/frameRate);
+  camera.Update(1.0/frameRate);
+  saveFrame("frames/####.png");
+}
+
+class Camera
+{
+  Camera()
+  {
+    position      = new PVector( -300, -500, 1500 ); // initial position
+    theta         = -0.15; // rotation around Y axis. Starts with forward direction as ( 0, 0, -1 )
+    phi           = -0.40; // rotation around X axis. Starts with up direction as ( 0, 1, 0 )
+    moveSpeed     = 200;
+    turnSpeed     = 0.57; // radians/sec
+
+    // dont need to change these
+    negativeMovement = new PVector( 0, 0, 0 );
+    positiveMovement = new PVector( 0, 0, 0 );
+    negativeTurn     = new PVector( 0, 0 ); // .x for theta, .y for phi
+    positiveTurn     = new PVector( 0, 0 );
+    fovy             = PI / 4;
+    aspectRatio      = width / (float) height;
+    nearPlane        = 0.1;
+    farPlane         = 10000;
+  }
+
+  void Update(float dt)
+  {
+    theta += turnSpeed * ( negativeTurn.x + positiveTurn.x)*dt;
+
+    // cap the rotation about the X axis to be less than 90 degrees to avoid gimble lock
+    float maxAngleInRadians = 85 * PI / 180;
+    phi = min( maxAngleInRadians, max( -maxAngleInRadians, phi + turnSpeed * ( negativeTurn.y + positiveTurn.y ) * dt ) );
+
+    // re-orienting the angles to match the wikipedia formulas: https://en.wikipedia.org/wiki/Spherical_coordinate_system
+    // except that their theta and phi are named opposite
+    float t = theta + PI / 2;
+    float p = phi + PI / 2;
+    PVector forwardDir = new PVector( sin( p ) * cos( t ),   cos( p ),   -sin( p ) * sin ( t ) );
+    PVector upDir      = new PVector( sin( phi ) * cos( t ), cos( phi ), -sin( t ) * sin( phi ) );
+    PVector rightDir   = new PVector( cos( theta ), 0, -sin( theta ) );
+    PVector velocity   = new PVector( negativeMovement.x + positiveMovement.x, negativeMovement.y + positiveMovement.y, negativeMovement.z + positiveMovement.z );
+    position.add( PVector.mult( forwardDir, moveSpeed * velocity.z * dt ) );
+    position.add( PVector.mult( upDir,      moveSpeed * velocity.y * dt ) );
+    position.add( PVector.mult( rightDir,   moveSpeed * velocity.x * dt ) );
+
+    aspectRatio = width / (float) height;
+    perspective( fovy, aspectRatio, nearPlane, farPlane );
+    camera( position.x, position.y, position.z,
+            position.x + forwardDir.x, position.y + forwardDir.y, position.z + forwardDir.z,
+            upDir.x, upDir.y, upDir.z );
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyPressed()
+  {
+    if ( key == 'w' ){
+      positiveMovement.z = 1;
+    }
+    if ( key == 's' ) negativeMovement.z = -1;
+    if ( key == 'a' ) negativeMovement.x = -1;
+    if ( key == 'd' ) positiveMovement.x = 1;
+    if ( key == 'q' ) positiveMovement.y = 1;
+    if ( key == 'e' ) negativeMovement.y = -1;
+
+    if ( keyCode == LEFT )  negativeTurn.x = 1;
+    if ( keyCode == RIGHT ) positiveTurn.x = -1;
+    if ( keyCode == UP )    positiveTurn.y = 1;
+    if ( keyCode == DOWN )  negativeTurn.y = -1;
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyReleased()
+  {
+    if ( key == 'w' ) positiveMovement.z = 0;
+    if ( key == 'q' ) positiveMovement.y = 0;
+    if ( key == 'd' ) positiveMovement.x = 0;
+    if ( key == 'a' ) negativeMovement.x = 0;
+    if ( key == 's' ) negativeMovement.z = 0;
+    if ( key == 'e' ) negativeMovement.y = 0;
+
+    if ( keyCode == LEFT  ) negativeTurn.x = 0;
+    if ( keyCode == RIGHT ) positiveTurn.x = 0;
+    if ( keyCode == UP    ) positiveTurn.y = 0;
+    if ( keyCode == DOWN  ) negativeTurn.y = 0;
+  }
+
+  // only necessary to change if you want different start position, orientation, or speeds
+  PVector position;
+  float theta;
+  float phi;
+  float moveSpeed;
+  float turnSpeed;
+
+  // probably don't need / want to change any of the below variables
+  float fovy;
+  float aspectRatio;
+  float nearPlane;
+  float farPlane;
+  PVector negativeMovement;
+  PVector positiveMovement;
+  PVector negativeTurn;
+  PVector positiveTurn;
+};
+
+public class Vec2 {
+  public float x, y;
+
+  public Vec2(float x, float y){
+    this.x = x;
+    this.y = y;
+  }
+
+  public String toString(){
+    return "(" + x+ "," + y +")";
+  }
+
+  public float length(){
+    return sqrt(x*x+y*y);
+  }
+
+  public Vec2 plus(Vec2 rhs){
+    return new Vec2(x+rhs.x, y+rhs.y);
+  }
+
+  public void add(Vec2 rhs){
+    x += rhs.x;
+    y += rhs.y;
+  }
+
+  public Vec2 minus(Vec2 rhs){
+    return new Vec2(x-rhs.x, y-rhs.y);
+  }
+
+  public void subtract(Vec2 rhs){
+    x -= rhs.x;
+    y -= rhs.y;
+  }
+
+  public Vec2 times(float rhs){
+    return new Vec2(x*rhs, y*rhs);
+  }
+
+  public void mul(float rhs){
+    x *= rhs;
+    y *= rhs;
+  }
+
+  public void clampToLength(float maxL){
+    float magnitude = sqrt(x*x + y*y);
+    if (magnitude > maxL){
+      x *= maxL/magnitude;
+      y *= maxL/magnitude;
+    }
+  }
+
+  public void setToLength(float newL){
+    float magnitude = sqrt(x*x + y*y);
+    x *= newL/magnitude;
+    y *= newL/magnitude;
+  }
+
+  public void normalize(){
+    float magnitude = sqrt(x*x + y*y);
+    x /= magnitude;
+    y /= magnitude;
+  }
+
+  public Vec2 normalized(){
+    float magnitude = sqrt(x*x + y*y);
+    return new Vec2(x/magnitude, y/magnitude);
+  }
+
+  public float distanceTo(Vec2 rhs){
+    float dx = rhs.x - x;
+    float dy = rhs.y - y;
+    return sqrt(dx*dx + dy*dy);
+  }
+}
+
+Vec2 interpolate(Vec2 a, Vec2 b, float t){
+  return a.plus((b.minus(a)).times(t));
+}
+
+float interpolate(float a, float b, float t){
+  return a + ((b-a)*t);
+}
+
+float dot(Vec2 a, Vec2 b){
+  return a.x*b.x + a.y*b.y;
+}
+
+Vec2 projAB(Vec2 a, Vec2 b){
+  return b.times(a.x*b.x + a.y*b.y);
+}
+
+public class Vec3 {
+  public float x, y, z;
+
+  public Vec3(float x, float y, float z){
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  public String toString(){
+    return "(" + x+ "," + y +"," + z + ")";
+  }
+
+  public float length(){
+    return sqrt(x*x+y*y+z*z);
+  }
+
+  public Vec3 plus(Vec3 rhs){
+    return new Vec3(x+rhs.x, y+rhs.y, z+rhs.z);
+  }
+
+  public void add(Vec3 rhs){
+    x += rhs.x;
+    y += rhs.y;
+    z += rhs.z;
+  }
+
+  public Vec3 minus(Vec3 rhs){
+    return new Vec3(x-rhs.x, y-rhs.y, z-rhs.z);
+  }
+
+  public void subtract(Vec3 rhs){
+    x -= rhs.x;
+    y -= rhs.y;
+    z -= rhs.z;
+  }
+
+  public Vec3 times(float rhs){
+    return new Vec3(x*rhs, y*rhs, z*rhs);
+  }
+
+  public void mul(float rhs){
+    x *= rhs;
+    y *= rhs;
+    z *= rhs;
+  }
+
+  public void normalize(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    if(magnitude==0.0){
+      println("Warning: zero vector magnitude --divide by zero not permitted");
+    }else{
+      x /= magnitude;
+      y /= magnitude;
+      z /= magnitude;
+    }
+  }
+
+  public Vec3 normalized(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    return new Vec3(x/magnitude, y/magnitude, z/magnitude);
+  }
+
+  public float distanceTo(Vec3 rhs){
+    float dx = rhs.x - x;
+    float dy = rhs.y - y;
+    float dz = rhs.z - z;
+    return sqrt(dx*dx + dy*dy+ dz*dz);
+  }
+}
+
+Vec3 interpolate(Vec3 a, Vec3 b, float t){
+  return a.plus((b.minus(a)).times(t));
+}
+
+float dot(Vec3 a, Vec3 b){
+  return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+Vec3 cross(Vec3 a, Vec3 b){
+  float j = a.y*b.z - a.z*b.y;
+  float k = a.z*b.x - a.x*b.z;
+  float l = a.x*b.y - a.y*b.x;
+  return new Vec3(j,k,l);
+}
+
+Vec3 projAB(Vec3 a, Vec3 b){
+  return b.times(a.x*b.x + a.y*b.y + a.z*b.z);
+}
