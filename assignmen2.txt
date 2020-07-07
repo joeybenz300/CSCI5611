@@ -1,0 +1,373 @@
+Camera camera;
+int nx = 50;
+int ny = 50;
+Vec3 p[][] = new Vec3[nx][ny];
+Vec3 v[][] = new Vec3[nx][ny];
+Vec3 vn[][] = new Vec3[nx][ny];
+PShape rect;
+float floor = 500;
+float gravity = 9.8;
+float radius = 2;
+Vec3 stringTop = new Vec3(100,100,100);
+Vec3 restLen = new Vec3(40,40,40);
+Vec3 stringF1;
+float mass = 30; //How does changing mass affect resting length?
+float k = 1; //How does changing k affect resting length?
+float kv = 7;
+float air = 1.225;
+float c = 0.1;
+Vec3 e;
+Vec3 n;
+Vec3 r1;Vec3 r2;
+Vec3 v2an;
+Vec3 aero;
+float d;
+Vec3 bounce;
+Vec3 spherePos = new Vec3(50,20,25);
+float sphereR = 15;
+float x=1;float y=1;float z=1;
+float l;float v1;float v2;float f;
+Vec3 zero = new Vec3(0,0,0);
+Vec3 grav = new Vec3(0,0.01,0);
+void setup() {
+//frameRate(60);
+  surface.setTitle("Project 2 - Frank Bender");
+  size(1000, 1000, P3D);
+  camera = new Camera();
+  delay(5000);
+  fill(255, 180, 89);
+  rect = createShape(RECT, -1000, -1000, 400000, 400000);
+  rect.rotateX(PI/2);
+  for(int i=0;i<nx;i++){
+    for(int j=0;j<ny;j++){
+      vn[i][j] = new Vec3(0,0,0);
+    }
+  }
+  for(int i=0;i<nx;i++){
+    for(int j=0;j<ny;j++){
+      p[i][j] = new Vec3(i,y,z+j);
+    }
+  }
+  for(int i=0;i<nx;i++){
+    for(int j=0;j<ny;j++){
+      v[i][j] = new Vec3(0,0,0);
+    }
+  }
+}
+
+void update(float dt){
+  vn = v;
+  for(int i = 0; i < nx-1; i++){
+   for(int j = 0; j < ny; j++){
+     e = (p[i+1][j]).minus(p[i][j]);
+     l = sqrt(dot(e,e));
+     e = new Vec3(e.x/l, e.y/l, e.z/l);
+     v1 = dot(e,v[i][j]);
+     v2 = dot(e,v[i+1][j]);
+     f = -k*(1-l)-kv*(v1-v2);
+     vn[i][j] = vn[i][j].plus(e.times(f*dt));
+     vn[i+1][j] = vn[i+1][j].minus(e.times(f*dt));
+     }
+   }
+   for(int k=0;k<nx;k++){
+     for(int m=0;m<ny-1;m++){
+       e = (p[k][m+1]).minus(p[k][m]);
+       l = sqrt(dot(e,e));
+       e = new Vec3(e.x/l, e.y/l, e.z/l);
+       v1 = dot(e,v[k][m]);
+       v2 = dot(e,v[k][m+1]);
+       f = -k*(1-l)-kv*(v1-v2);
+       if(k<nx-1){
+       //r1 = p[k+1][m+1].minus(p[k][m+1]);
+       //r2 = p[k+1][m+1].minus(p[k+1][m]);
+       //Vec3 n = cross(r1,r2);
+       //v2an = n.times((l*(dot(e,n)))/(2*sqrt(dot(n,n))));
+       //aero = v2an.times(-0.5*air*c);
+       aero = zero;
+       }else{
+       aero = zero;
+       }
+       vn[k][m] = vn[k][m].plus(e.times(f*dt)).plus(aero);
+       vn[k][m+1] = vn[k][m+1].minus(e.times(f*dt));
+     }
+   }
+   for(int r=0;r<nx;r++){
+     for(int s=0;s<ny;s++){
+        vn[r][s] = vn[r][s].plus(grav);
+        vn[0][s] = zero;
+        //p[0][s] = zero;
+        v = vn;
+        p[r][s] = p[r][s].plus(v[r][s].times(dt));
+     }
+   }
+   for(int x=0;x<nx;x++){
+     for(int j=0;j<ny;j++){
+       d = spherePos.distanceTo(p[x][j]);
+       if(d < sphereR+1){
+         n = (spherePos.minus(p[x][j])).times(-1);
+         n.normalized();
+         bounce = n.times(dot(v[x][j],n));
+         v[x][j].subtract(bounce.times(0.005));
+         //v[x][j].x -= bounce.times(0.5).x;
+         //v[x][j].y += bounce.times(5*0.5).y;
+         //v[x][j].z -= bounce.times(2*0.5).z;
+         p[x][j].subtract(n.times(0));
+       }
+     }
+   }
+}
+
+
+void draw() {
+  boolean gate = false;
+  update(.1);
+  background(255,255,255);
+  specular(120, 120, 180);
+  ambientLight(20,20,20);
+  lightSpecular(255,255,200); shininess(100);  //More light…
+  directionalLight(200, 200, 200, -1, 1, -1);
+  for(int i=0;i<nx;i++){
+    for(int j=0;j<ny;j++){
+      if(j<ny && i<nx-1){
+      pushMatrix();
+      line(p[i][j].x,p[i][j].y,p[i][j].z,p[i+1][j].x,p[i+1][j].y,p[i+1][j].z);
+      popMatrix();
+      }
+      if(j<ny-1 && i<nx-1){
+      pushMatrix();
+      line(p[i][j].x,p[i][j].y,p[i][j].z,p[i][j+1].x,p[i][j+1].y,p[i][j+1].z);
+      popMatrix();
+      }
+      if(j<ny-1 && i<nx-1){
+       pushMatrix();
+       beginShape();
+       if(j % 2 == 0){
+        fill(color(255,0,0));
+        gate = false;
+       }else{
+        fill(color(0,0,0));
+        gate = true;
+       }
+       vertex(p[i][j].x,p[i][j].y,p[i][j].z);
+       vertex(p[i][j+1].x,p[i][j+1].y,p[i][j+1].z);
+       vertex(p[i+1][j+1].x,p[i+1][j+1].y,p[i+1][j+1].z);
+       vertex(p[i+1][j].x,p[i+1][j].y,p[i+1][j].z);
+       endShape();
+       popMatrix();
+      }
+    }
+  }
+  pushMatrix();
+  translate(spherePos.x, spherePos.y, spherePos.z);
+  noStroke();
+  fill(color(0,0,255));
+  sphere(sphereR);
+
+  popMatrix();
+  println("framerate: ",frameRate);
+  //update(1.0/frameRate);
+  camera.Update(1.0/frameRate);
+}
+
+void keyPressed()
+{
+  camera.HandleKeyPressed();
+}
+
+void keyReleased()
+{
+  camera.HandleKeyReleased();
+}
+
+class Camera
+{
+  Camera()
+  {
+    position      = new PVector(21, -46, -63); // initial position
+    theta         = -3.79; // rotation around Y axis. Starts with forward direction as ( 0, 0, -1 )
+    phi           = -0.73; // rotation around X axis. Starts with up direction as ( 0, 1, 0 )
+    moveSpeed     = 50;
+    turnSpeed     = 1.57; // radians/sec
+
+    // dont need to change these
+    negativeMovement = new PVector( 0, 0, 0 );
+    positiveMovement = new PVector( 0, 0, 0 );
+    negativeTurn     = new PVector( 0, 0 ); // .x for theta, .y for phi
+    positiveTurn     = new PVector( 0, 0 );
+    fovy             = PI / 4;
+    aspectRatio      = width / (float) height;
+    nearPlane        = 0.1;
+    farPlane         = 10000;
+  }
+
+  void Update(float dt)
+  {
+    theta += turnSpeed * ( negativeTurn.x + positiveTurn.x)*dt;
+
+    // cap the rotation about the X axis to be less than 90 degrees to avoid gimble lock
+    float maxAngleInRadians = 85 * PI / 180;
+    phi = min( maxAngleInRadians, max( -maxAngleInRadians, phi + turnSpeed * ( negativeTurn.y + positiveTurn.y ) * dt ) );
+
+    // re-orienting the angles to match the wikipedia formulas: https://en.wikipedia.org/wiki/Spherical_coordinate_system
+    // except that their theta and phi are named opposite
+    float t = theta + PI / 2;
+    float pos = phi + PI / 2;
+    PVector forwardDir = new PVector( sin( pos ) * cos( t ),   cos( pos ),   -sin( pos ) * sin ( t ) );
+    PVector upDir      = new PVector( sin( phi ) * cos( t ), cos( phi ), -sin( t ) * sin( phi ) );
+    PVector rightDir   = new PVector( cos( theta ), 0, -sin( theta ) );
+    PVector velocity   = new PVector( negativeMovement.x + positiveMovement.x, negativeMovement.y + positiveMovement.y, negativeMovement.z + positiveMovement.z );
+    position.add( PVector.mult( forwardDir, moveSpeed * velocity.z * dt ) );
+    position.add( PVector.mult( upDir,      moveSpeed * velocity.y * dt ) );
+    position.add( PVector.mult( rightDir,   moveSpeed * velocity.x * dt ) );;
+
+    aspectRatio = width / (float) height;
+    perspective( fovy, aspectRatio, nearPlane, farPlane );
+    camera( position.x, position.y, position.z,
+            position.x + forwardDir.x, position.y + forwardDir.y, position.z + forwardDir.z,
+            upDir.x, upDir.y, upDir.z );
+    println(position.x, position.y, position.z, "theta: ",theta,"phi: ",phi);
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyPressed()
+  {
+    if ( key == 'w' ) positiveMovement.z = 1;
+    if ( key == 's' ) negativeMovement.z = -1;
+    if ( key == 'a' ) negativeMovement.x = -1;
+    if ( key == 'd' ) positiveMovement.x = 1;
+    if ( key == 'q' ) positiveMovement.y = 1;
+    if ( key == 'e' ) negativeMovement.y = -1;
+
+    if ( keyCode == LEFT )  negativeTurn.x = 1;
+    if ( keyCode == RIGHT ) positiveTurn.x = -1;
+    if ( keyCode == UP )    positiveTurn.y = 1;
+    if ( keyCode == DOWN )  negativeTurn.y = -1;
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyReleased()
+  {
+    if ( key == 'w' ) positiveMovement.z = 0;
+    if ( key == 'q' ) positiveMovement.y = 0;
+    if ( key == 'd' ) positiveMovement.x = 0;
+    if ( key == 'a' ) negativeMovement.x = 0;
+    if ( key == 's' ) negativeMovement.z = 0;
+    if ( key == 'e' ) negativeMovement.y = 0;
+
+    if ( keyCode == LEFT  ) negativeTurn.x = 0;
+    if ( keyCode == RIGHT ) positiveTurn.x = 0;
+    if ( keyCode == UP    ) positiveTurn.y = 0;
+    if ( keyCode == DOWN  ) negativeTurn.y = 0;
+  }
+
+  // only necessary to change if you want different start position, orientation, or speeds
+  PVector position;
+  float theta;
+  float phi;
+  float moveSpeed;
+  float turnSpeed;
+
+  // probably don't need / want to change any of the below variables
+  float fovy;
+  float aspectRatio;
+  float nearPlane;
+  float farPlane;
+  PVector negativeMovement;
+  PVector positiveMovement;
+  PVector negativeTurn;
+  PVector positiveTurn;
+};
+
+public class Vec3 {
+  public float x, y, z;
+
+  public Vec3(float x, float y, float z){
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  public String toString(){
+    return "(" + x+ "," + y +"," + z + ")";
+  }
+
+  public float length(){
+    return sqrt(x*x+y*y+z*z);
+  }
+
+  public Vec3 plus(Vec3 rhs){
+    return new Vec3(x+rhs.x, y+rhs.y, z+rhs.z);
+  }
+
+  public void add(Vec3 rhs){
+    x += rhs.x;
+    y += rhs.y;
+    z += rhs.z;
+  }
+
+  public Vec3 minus(Vec3 rhs){
+    return new Vec3(x-rhs.x, y-rhs.y, z-rhs.z);
+  }
+
+  public void subtract(Vec3 rhs){
+    x -= rhs.x;
+    y -= rhs.y;
+    z -= rhs.z;
+  }
+
+  public Vec3 times(float rhs){
+    return new Vec3(x*rhs, y*rhs, z*rhs);
+  }
+
+  public void mul(float rhs){
+    x *= rhs;
+    y *= rhs;
+    z *= rhs;
+  }
+
+  public void normalize(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    if(magnitude==0.0){
+      println("Warning: zero vector magnitude --divide by zero not permitted");
+    }else{
+      x /= magnitude;
+      y /= magnitude;
+      z /= magnitude;
+    }
+  }
+
+  public float magnitude(Vec3 vec){
+    return sqrt(vec.x*vec.x+vec.y*vec.y+vec.z*vec.z);
+  }
+
+  public Vec3 normalized(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    return new Vec3(x/magnitude, y/magnitude, z/magnitude);
+  }
+
+  public float distanceTo(Vec3 rhs){
+    float dx = rhs.x - x;
+    float dy = rhs.y - y;
+    float dz = rhs.z - z;
+    return sqrt(dx*dx + dy*dy+ dz*dz);
+  }
+}
+
+Vec3 interpolate(Vec3 a, Vec3 b, float t){
+  return a.plus((b.minus(a)).times(t));
+}
+
+float dot(Vec3 a, Vec3 b){
+  return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+Vec3 cross(Vec3 a, Vec3 b){
+  float j = a.y*b.z - a.z*b.y;
+  float k = a.z*b.x - a.x*b.z;
+  float l = a.x*b.y - a.y*b.x;
+  return new Vec3(j,k,l);
+}
+
+Vec3 projAB(Vec3 a, Vec3 b){
+  return b.times(a.x*b.x + a.y*b.y + a.z*b.z);
+}
