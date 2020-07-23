@@ -1,0 +1,395 @@
+// Created for CSCI 5611 by Liam Tyler
+//CSCI 5611 - Graph Search & Planning
+//PRM Sample Code [HW3]
+//Instructor: Stephen J. Guy <sjguy@umn.edu>
+
+//This is a test harness designed to help you test & debug your PRM.
+
+//USAGE:
+// On start-up your PRM will be tested on a random scene and the results printed
+// Left clicking will set a red goal, right clicking the blue start
+// The arrow keys will move the circular obstacle with the heavy outline
+// Pressing 'r' will randomize the obstacles and re-run the tests
+
+//Change the below parameters to change the scenario/roadmap size
+int numObstacles = 100;
+int numNodes  = 100;
+int crowdMax = 5;
+PShape house;
+PShape rect;
+PShape[] houses = new PShape[numObstacles];
+
+
+
+static int pathLen = 4;
+
+Vec3[] path = new Vec3[pathLen]; //A series of collision-free waypoints
+int curPathIdx = 0; //Which node in the path we are going towards
+
+Vec3 obsPos = new Vec3(440,0,360); //A circular obstacle the path avoids
+float obsRad = 30;
+Vec3 startPos = new Vec3(100,0,500);
+Vec3 goalPos = new Vec3(500,0,200);
+Vec3[] startPoses = new Vec3[crowdMax];
+Vec3[] goalPoses = new Vec3[crowdMax];
+//The agent we are controlling
+float agentRad = 40;
+Vec3 agentPos;
+Vec3 agentVel = new Vec3(200,0,40);
+float goalSpeed = 100;
+boolean toggle = false;
+//A list of circle obstacles
+static int maxNumObstacles = 1000;
+Vec3 circlePos[] = new Vec3[maxNumObstacles]; //Circle positions
+float circleRad[] = new float[maxNumObstacles];  //Circle radii
+
+static int maxNumNodes = 1000;
+Vec3[] nodePos = new Vec3[maxNumNodes+2];
+
+Vec3 computeAgentVel(){
+  if(curPathIdx < curPath.size()-1){
+    if(agentPos.distanceTo(nodePos[curPath.get(curPathIdx)]) < 1){
+      if(curPathIdx < curPath.size()-1){
+        curPathIdx++;
+      }
+      return new Vec3(0,0,0);
+    }
+    Vec3 vel = nodePos[curPath.get(curPathIdx)].minus(agentPos).normalized().times(goalSpeed);
+    return vel;
+  }else if(curPathIdx == curPath.size()-1){
+    Vec3 vel = nodePos[curPath.get(curPath.size()-1)].minus(agentPos).normalized().times(goalSpeed);
+    return vel;
+  }
+  //if(curPathIdx < path.length - 1 && !rayCircleIntersect(obsPos, obsRad + agentRad, agentPos, path[curPathIdx+1].minus(agentPos).normalized(), path[curPathIdx+1].minus(agentPos).length())){
+  //  curPathIdx++;
+  //}
+  return new Vec3(0,0,0);
+}
+
+
+void moveAgent(float dt){
+  //Waterfall
+  agentVel = computeAgentVel();
+  agentPos.add(agentVel.times(dt));
+}
+
+boolean paused = true;
+
+//Generate non-colliding PRM nodes
+void generateRandomNodes(int numNodes, Vec3[] circleCenters, float[] circleRadii){
+  for (int i = 0; i < numNodes; i++){
+    Vec3 randPos = new Vec3(random(width),0,random(height));
+    boolean insideAnyCircle = pointInCircleList(circleCenters,circleRadii,numObstacles,randPos);
+    //boolean insideBox = pointInBox(boxTopLeft, boxW, boxH, randPos);
+    while (insideAnyCircle){
+      randPos = new Vec3(random(width),0,random(height));
+      insideAnyCircle = pointInCircleList(circleCenters,circleRadii,numObstacles,randPos);
+      //insideBox = pointInBox(boxTopLeft, boxW, boxH, randPos);
+    }
+    nodePos[i] = randPos;
+  }
+}
+
+void placeRandomObstacles(int numObstacles){
+  //Initial obstacle position
+  for (int i = 0; i < numObstacles; i++){
+    circlePos[i] = new Vec3(random(50,950),0,random(50,700));
+    circleRad[i] = (10+40*pow(random(1),3));
+  }
+  circleRad[0] = 30; //Make the first obstacle big
+}
+
+ArrayList<Integer> curPath;ArrayList<Integer> curPath2;ArrayList<Integer> curPath3;
+int[][] curPaths = new int[crowdMax][numNodes];
+
+//int strokeWidth = 2;
+
+int numCollisions;
+float pathLength;
+boolean reachedGoal;
+void pathQuality(){
+  Vec3 dir;
+  hitInfo hit;
+  float segmentLength;
+  numCollisions = 9999; pathLength = 9999;
+  if (curPath.size() == 1 && curPath.get(0) == -1) return; //No path found
+
+  pathLength = 0; numCollisions = 0;
+
+  if (curPath.size() == 0 ){ //Path found with no nodes (direct start-to-goal path)
+    segmentLength = startPos.distanceTo(goalPos);
+    pathLength += segmentLength;
+    dir = goalPos.minus(startPos).normalized();
+    hit = rayCircleListIntersect(circlePos, circleRad, numObstacles, startPos, dir, segmentLength);
+    if (hit.hit) numCollisions += 1;
+    return;
+  }
+
+  segmentLength = startPos.distanceTo(nodePos[curPath.get(0)]);
+  pathLength += segmentLength;
+  dir = nodePos[curPath.get(0)].minus(startPos).normalized();
+  hit = rayCircleListIntersect(circlePos, circleRad, numObstacles, startPos, dir, segmentLength);
+  if (hit.hit) numCollisions += 1;
+
+
+  for (int i = 0; i < curPath.size()-1; i++){
+    int curNode = curPath.get(i);
+    int nextNode = curPath.get(i+1);
+    segmentLength = nodePos[curNode].distanceTo(nodePos[nextNode]);
+    pathLength += segmentLength;
+
+    dir = nodePos[nextNode].minus(nodePos[curNode]).normalized();
+    hit = rayCircleListIntersect(circlePos, circleRad, numObstacles, nodePos[curNode], dir, segmentLength);
+    if (hit.hit) numCollisions += 1;
+  }
+
+  int lastNode = curPath.get(curPath.size()-1);
+  segmentLength = nodePos[lastNode].distanceTo(goalPos);
+  pathLength += segmentLength;
+  dir = goalPos.minus(nodePos[lastNode]).normalized();
+  hit = rayCircleListIntersect(circlePos, circleRad, numObstacles, nodePos[lastNode], dir, segmentLength);
+  if (hit.hit) numCollisions += 1;
+}
+
+Vec3 sampleFreePos(){
+  Vec3 randPos = new Vec3(random(width),0,random(height));
+  boolean insideAnyCircle = pointInCircleList(circlePos,circleRad,numObstacles,randPos);
+  while (insideAnyCircle){
+    randPos = new Vec3(random(width),0,random(height));
+    insideAnyCircle = pointInCircleList(circlePos,circleRad,numObstacles,randPos);
+  }
+  return randPos;
+}
+
+void testPRM(){
+  long startTime, endTime;
+
+  placeRandomObstacles(numObstacles);
+
+  startPos = sampleFreePos();
+  goalPos = sampleFreePos();
+
+  generateRandomNodes(numNodes, circlePos, circleRad);
+  startTime = millis();
+  curPath = planPath(startPos, goalPos, circlePos, circleRad, numObstacles, nodePos, numNodes);
+  //curPath2 = planPath(startPos2, goalPos2, circlePos, circleRad, numObstacles, nodePos, numNodes);
+  //curPath3 = planPath(startPos3, goalPos3, circlePos, circleRad, numObstacles, nodePos, numNodes);
+  agentPos = nodePos[curPath.get(0)];
+  //Vec3 agentPos2 = nodePos[curPath2.get(0)];
+  //Vec3 agentPos3 = nodePos[curPath2.get(0)];
+  endTime = millis();
+  curPathIdx = 0;
+    //int curPathIdx2 = 0;
+    //  int curPathIdx3 = 0;
+  pathQuality();
+
+  println("Nodes:", numNodes," Obstacles:", numObstacles," Time (ms):",endTime-startTime,
+          " Path Len:", pathLength, " Path Segment:", curPath.size()+1,  " Num Collisions:", numCollisions);
+}
+
+boolean shiftDown = false;
+Camera camera;
+
+void setup()
+{
+  delay(5000);
+  size(1024, 768, P3D);
+  rect = createShape(RECT, 0, 0, 1000, 800);
+  rect.rotateX(PI/2);
+  camera = new Camera();
+  house = loadShape("Building1_Small.obj");
+  house.scale(5);
+  house.rotateX(PI);
+  for(int i=0;i<numObstacles;i++){
+    float r = circleRad[i];
+    houses[i] = house;
+  }
+  testPRM();
+
+    //Draw black circles at nodes
+  //for (int i=0;i<curPath.size();i++){
+  //  int current = curPath.get(i);
+  //  translate(nodePos[current].x,nodePos[current].y,nodePos[current].z);
+  //  circle(0,0,10);
+  //}
+  //Draw edges between nodes
+  for (int i = 0; i < curPath.size(); i++){
+    int current = curPath.get(i);
+    if(i == curPath.size()-1){
+    line(nodePos[current].x,nodePos[current].y,nodePos[current].z,goalPos.x,goalPos.y,goalPos.z);
+    }else{
+    line(nodePos[current].x,nodePos[current].y,nodePos[current].z,nodePos[current+1].x,nodePos[current+1].y,nodePos[current+1].z);
+    }
+  }
+  startPos = nodePos[curPath.get(0)];
+
+}
+
+void keyPressed()
+{
+    if (key == 'r'){
+    testPRM();
+    return;
+  }
+  if (!paused){
+    moveAgent(1.0/frameRate);
+  }
+
+  if (keyCode == SHIFT){
+    shiftDown = true;
+  }
+  if (key == ' ') paused = !paused;
+  float speed = 40;
+  if (shiftDown) speed = 80;
+  if (key == 'l'){
+    circlePos[0].x += speed;
+  }
+  if (key == 'j'){
+    circlePos[0].x -= speed;
+  }
+  if (key == 'i'){
+    circlePos[0].z -= speed;
+  }
+  if (key == 'k'){
+    circlePos[0].z += speed;
+  }
+  curPath = planPath(startPos, goalPos, circlePos, circleRad, numObstacles, nodePos, numNodes);
+  camera.HandleKeyPressed();
+}
+
+void keyReleased()
+{
+  camera.HandleKeyReleased();
+    if (keyCode == SHIFT){
+    shiftDown = false;
+  }
+}
+
+void mousePressed(){
+  if (mouseButton == RIGHT){
+    startPos = new Vec3(mouseX, 0, mouseY);
+    //println("New Start is",startPos.x, startPos.y);
+  }
+  else{
+    goalPos = new Vec3(mouseX, 0, mouseY);
+    //println("New Goal is",goalPos.x, goalPos.y);
+  }
+  curPath = planPath(startPos, goalPos, circlePos, circleRad, numObstacles, nodePos, numNodes);
+}
+
+//void update(float dt){
+//  moveAgent(dt);
+//}
+
+void draw() {
+    //println("FrameRate:",frameRate);
+  strokeWeight(1);
+  //background(200); //Grey background
+  stroke(0,0,0);
+  //fill(255,255,255);
+  background(31, 203, 255);
+  pushMatrix();
+  shape(rect);
+  rect.setFill(color(62, 179, 80));
+  popMatrix();
+  //specular(120, 120, 180);
+  //ambientLight(20,20,20);
+  //lightSpecular(255,255,200); shininess(100);  //More light…
+
+
+  //Draw the circle obstacles
+  //  babyYoda = loadShape("BabyYodaComplete.obj");
+  //deathStar = loadShape("death_star.obj");
+  float count = 0;
+  for (int i = 0; i < numObstacles; i++){
+    Vec3 c = circlePos[i];
+    float r = circleRad[i];
+    pushMatrix();
+  //  noStroke();
+    fill(color(255,0,0));
+    translate(c.x,c.y,c.z);
+  //  noFill();
+    box(r);
+    popMatrix();
+   // sphere(r);
+
+      //pushMatrix();
+      //translate(c.x,0,c.z);
+      //shape(houses[i]);
+      //popMatrix();
+  }
+  //Draw the first circle a little special b/c the user controls it
+  pushMatrix();
+  fill(240);
+  //strokeWeight(2);
+  translate(circlePos[0].x,circlePos[0].y,circlePos[0].z);
+  //circle(circlePos[0].x,circlePos[0].z,circleRad[0]*2);
+  sphere(obsRad);
+  popMatrix();
+  //strokeWeight(1);
+
+  if(!paused){
+  pushMatrix();
+  moveAgent(1.0/frameRate);
+  translate(agentPos.x,0,agentPos.z);
+  println("Agent position is : ",agentPos.x, 0, agentPos.z);
+  sphere(5);
+  popMatrix();
+  }
+
+  //Draw PRM Nodes
+  //fill(0);
+  //for (int i = 0; i < numNodes; i++){
+  //  pushMatrix();
+  //  translate(nodePos[i].x,0,nodePos[i].z);
+  //  fill(color(0,0,255));
+  //  circle(0,0,5);
+  //  popMatrix();
+  //}
+
+  //Draw graph
+  //stroke(100,100,100);
+  //strokeWeight(1);
+  noStroke();
+  for (int i = 0; i < numNodes; i++){
+    for (int j : neighbors[i]){
+      line(nodePos[i].x,nodePos[i].y,nodePos[i].z,nodePos[j].x,nodePos[j].y,nodePos[j].z);
+    }
+  }
+
+  //Draw Start and Goal
+  pushMatrix();
+  fill(20,60,250);
+  //circle(nodePos[startNode].x,nodePos[startNode].y,20);
+  translate(startPos.x,startPos.y,startPos.z);
+  sphere(10);
+  popMatrix();
+  pushMatrix();
+  fill(250,30,50);
+  //circle(nodePos[goalNode].x,nodePos[goalNode].y,20);
+  translate(goalPos.x,goalPos.y,goalPos.z);
+  sphere(10);
+  popMatrix();
+
+  if (curPath.size() >0 && curPath.get(0) == -1) return; //No path found
+
+  //Draw Planned Path
+  stroke(20,255,40);
+  strokeWeight(2);
+  if (curPath.size() == 0){
+    line(startPos.x,startPos.y,startPos.z,goalPos.x,goalPos.y,goalPos.z);
+    return;
+  }
+  line(startPos.x,startPos.y,startPos.z,nodePos[curPath.get(0)].x,nodePos[curPath.get(0)].y,nodePos[curPath.get(0)].z);
+  for (int i = 0; i < curPath.size()-1; i++){
+    int curNode = curPath.get(i);
+    int nextNode = curPath.get(i+1);
+    line(nodePos[curNode].x,nodePos[curNode].y,nodePos[curNode].z,nodePos[nextNode].x,nodePos[nextNode].y,nodePos[nextNode].z);
+  }
+  line(goalPos.x,goalPos.y,goalPos.z,nodePos[curPath.get(curPath.size()-1)].x,nodePos[curPath.get(curPath.size()-1)].y,nodePos[curPath.get(curPath.size()-1)].z);
+  //background(255);
+  //noLights();
+
+  //update(1.0/frameRate);
+  camera.Update(1.0/frameRate);
+}
