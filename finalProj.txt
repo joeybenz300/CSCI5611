@@ -1,0 +1,890 @@
+import processing.sound.*;
+Sound s;
+
+
+/**
+ * Processing Sound Library, Example 5
+ *
+ * This sketch shows how to use the FFT class to analyze a stream
+ * of sound. Change the number of bands to get more spectral bands
+ * (at the expen se of more coarse-grained time resolution of the spectrum).
+ *
+ * Load this example with included sound files from the Processing Editor:
+ * Examples > Libraries > Sound > Analysis > FFTSpectrum
+ */
+
+// Declare the sound source and FFT analyzer variables
+SoundFile sample;
+SoundFile sample2;
+SoundFile sample3;
+SoundFile rickRoll;
+FFT fft;
+Amplitude rms;
+float sumAmp;
+int waveCt = 127;
+float freq_snapshot;
+// Define how many FFT bands to use (this needs to be a power of two)
+int bands = 128;
+
+// Define a smoothing factor which determines how much the spectrums of consecutive
+// points in time should be combined to create a smoother visualisation of the spectrum.
+// A smoothing factor of 1.0 means no smoothing (only the data from the newest analysis
+// is rendered), decrease the factor down towards 0.0 to have the visualisation update
+// more slowly, which is easier on the eye.
+float smoothingFactor = 0.09;
+
+// Create a vector to store the smoothed spectrum data in
+float[] sum = new float[bands];
+PImage[] rickRollFrame = new PImage[50];
+// Variables for drawing the spectrum:
+// Declare a scaling factor for adjusting the height of the rectangles
+float scale = 1;
+// Declare a drawing variable for calculating the width of the
+float barWidth;
+float waveBuffer[] = new float[129];
+PImage bg;
+PImage logo;
+PShape track;
+PShape mountainL;
+PShape mountainR;
+float ringRadius = 200;
+int ringCounter = 0;
+float lastHeight = 0;
+float ringR = 255;
+float ringB = 255;
+float ringG = 120;
+int objCount = 0;
+boolean rickRollSwitch;
+int rickRollFrameCt = 0;
+Vec3 e;
+float l;
+int numObstacles = 1000;
+Vec3 obsPos[] = new Vec3[numObstacles];
+//horizontal and vertical iterations
+int hIt = 9;
+int vIt = 128;
+float linePos;
+float zSpeed = 0;
+float mountainAngle = 1;
+float tileSize = 25;
+Vec3 gravity = new Vec3(0, -1, 0);
+Vec3 pL[][] = new Vec3[hIt][vIt];
+Vec3 vL[][] = new Vec3[hIt][vIt];
+Vec3 pR[][] = new Vec3[hIt][vIt];
+Vec3 vR[][] = new Vec3[hIt][vIt];
+Camera camera;
+//kaleidoscope
+float lineColorR = 255;
+float lineColorG = 0;
+float lineColorB = 255;
+PImage kImg;
+int slices = 12;
+float angle = PI/slices;
+PShape kSlice;
+float kRadius;
+int state = -1;
+int mode = 0;
+PFont f;
+float obsPointer = 0;
+Vec3 agentPos = new Vec3(100, -25, -13.925083);
+Vec3 resetPos = new Vec3(100, -25, -13.925083);
+Vec3 nullVector = new Vec3(-10000, -10000, -10000);
+float agentTheta = -3.1753137;
+float agentPhi = -0.03618811;
+float resetTheta = agentTheta;
+float resetPhi = agentPhi;
+PVector posPointer;
+float powerUpGenRate = 50;
+float genRate = 100;
+float coinGenRate = 100;
+Vec3 initPos = new Vec3(0, -12.5, -500);
+float score = 0;
+float endTime = 0;
+float startTime = 0;
+
+void setup() {
+  frameRate(120);
+  size(1000, 1000, P3D);
+  f = createFont("Comic Sans MS", 32, true);
+  camera = new Camera();
+  //pushMatrix();
+  waveBuffer[0] = -1;
+  kSlice = createShape();
+  kImg = loadImage("kaleidoscope2.jpg");
+  logo = loadImage("logo.png");
+  kImg.resize(7000, 7000);
+  kRadius = 7000/2*0.9;
+  bg = loadImage("space.jpg");
+  bg.resize(1000, 1000);
+  translate(0, 0, 0);
+  track = createShape(RECT, 0, 0, 200, 4000);
+  track.setStroke(color(255));
+  track.rotateX(PI/2);
+  track.setFill(color(0, 0, 0));
+  // popMatrix();
+  for (int i=0; i<hIt; i++) {
+    for (int j=0; j<vIt; j++) {
+      pL[i][j] = new Vec3(200+(tileSize*i), -mountainAngle*i, j*tileSize);
+      pR[i][j] = new Vec3(-tileSize*i, -mountainAngle*i, j*tileSize);
+    }
+  }
+  for (int i=0; i<numObstacles; i++) {
+    float state = 1+floor(random(8));
+    obsPos[i] = new Vec3(state*(25)-12.5, -12.5, 1000+random(200000));
+  }
+  for (int i=0; i<50; i++) {
+    rickRollFrame[i] = loadImage("rickRollFrame/frame_"+nf(i, 3)+"_delay-0.03s.gif");
+    rickRollFrame[i].resize(500, 500);
+  }
+
+  //SOUND INITIALIZATION
+  // Calculate the width of the rects depending on how many bands we have
+  barWidth = width/float(bands);
+
+  // Load and play a soundfile and loop it.
+  sample = new SoundFile(this, "sweetDreams.wav");
+  sample2 = new SoundFile(this, "daddyCool.wav");
+  sample3 = new SoundFile(this, "blueRemix.wav");
+  rickRoll = new SoundFile(this, "rickRoll.wav");
+  sample.loop();
+
+  // Create the FFT analyzer and connect the playing soundfile to it.
+  fft = new FFT(this, bands);
+  fft.input(sample);
+
+  rms = new Amplitude(this);
+  rms.input(sample);
+
+
+
+  // Create a Sound object for globally controlling the output volume.
+  // s = new Sound(this);
+
+
+  //popMatrix();
+}
+void keyPressed()
+{
+  if ( key == '1' ) {
+    fft.input(sample);
+    rms.input(sample);
+    sample.loop();
+    sample2.stop();
+    sample3.stop();
+    rickRoll.stop();
+    rickRollSwitch = false;
+  }
+  if ( key == '2' ) {
+    fft.input(sample2);
+    rms.input(sample2);
+    sample2.loop();
+    sample.stop();
+    sample3.stop();
+    rickRoll.stop();
+    rickRollSwitch = false;
+  }
+  if ( key == '3' ) {
+    fft.input(sample3);
+    rms.input(sample3);
+    sample3.loop();
+    sample.stop();
+    sample2.stop();
+    rickRoll.stop();
+    rickRollSwitch = false;
+  }
+  if ( key == 'r' ) {
+    fft.input(rickRoll);
+    rms.input(rickRoll);
+    rickRoll.loop();
+    sample.stop();
+    sample2.stop();
+    sample3.stop();
+    rickRollSwitch = true;
+  }
+  if ( key == '/' ) {
+    mode = 0;
+  }
+  if (mode == 0 && key == '.') {
+    //agentPos = resetPos;
+    //agentTheta = resetTheta;
+    //agentPhi = resetPhi;
+    camera.reset(resetPos, resetTheta, resetPhi);
+    mode = 1;
+  }
+
+  camera.HandleKeyPressed();
+}
+
+void keyReleased()
+{
+  camera.HandleKeyReleased();
+}
+
+float initHeight;
+float shift = 1;
+void update(float dt) {
+  endTime += 1;
+  println("score", endTime);
+  if (rickRollFrameCt < 49) {
+    rickRollFrameCt++;
+  } else {
+    rickRollFrameCt = 0;
+  }
+  fft.analyze();
+  sumAmp += (rms.analyze() - sumAmp) * smoothingFactor;
+  float rms_scaled = sumAmp * (10) * 5;
+  if (shift<127) {
+    shift++;
+  }
+
+  //float toGen_float = powerUpGenRate * dt;
+  //int toGen = int(toGen_float);
+  //float fractPart = toGen_float - toGen;
+  //if (random(1) < fractPart) toGen += 1;
+  //for (int i = 0; i < toGen; i++) {
+  //  // if (numParticles >= maxParticles) break;
+  //  //if(doomsday) break;
+  //  pos[numParticles] = new Vec3(initialPos.x+20+random(10), initialPos.y-40+random(5), initialPos.z+random(5));
+  //  vel[numParticles] = new Vec3(100+random(30), spherePos.y/2+random(30), 75+random(45));
+  //  numParticles += 1;
+  //}
+  //for (int p = 0; p < toGen; p++) {
+  //  if (laserParticles >= maxParticles) break;
+  //  laserPos[laserParticles] = new Vec3(spherePos.x, spherePos.y, spherePos.z);
+  //  laserVel[laserParticles] = new Vec3(100+random(30), 500+random(30), 0+random(30));
+  //  laserParticles += 1;
+  //  //doomsday = true;
+  //}
+  //println(sumAmp);
+
+  //LINE ANIMATIONS
+  if (linePos > -25) {
+    linePos -= 10;
+  } else {
+    linePos = 0;
+  }
+
+  //RING ANIMATIONS
+  if (ringG < 0) {
+    ringG = 200;
+  } else {
+    ringG-=5;
+  }
+  //ringCounter += 1;
+  if (ringRadius < 350) {
+    ringRadius += 20;
+  } else {
+    ringRadius = 200;
+  }
+  lineColorR = (50+sumAmp*3*255-random(200));
+  lineColorG = (sumAmp*255+random(100));
+  lineColorB = (50+sumAmp*3*255-random(200));
+
+  for (int i = 0; i < bands; i++) {
+    // Smooth the FFT spectrum data by smoothing factor
+    sum[i] += (fft.spectrum[i] - sum[i]) * smoothingFactor;
+    //pushMatrix();
+    //fill(color(255,0,255));
+    //// Draw the rectangles, adjust their height using the scale factor
+    //rect(i*barWidth, height, barWidth, -sum[i]*height*scale);
+    //popMatrix();
+  }
+
+  //MOUNTAIN ANIMATIONS
+  for (int i=1; i<hIt; i++) {
+    for (int j=0; j<vIt; j++) {
+      if (j<vIt-1) {
+        gravity = new Vec3(0, random(10), 0);
+      }
+      pL[i][j] = pL[i][j].plus(gravity.times(dt));
+      if (pL[i][j].y > 0) {
+        pL[i][j].y = 0;
+      }
+    }
+  }
+  for (int i=1; i<hIt; i++) {
+    for (int j=0; j<vIt; j++) {
+      float freq = -sum[vIt-1-j]*height*scale;
+      gravity = new Vec3(0, random(10), 0);
+      Vec3 freqVec = new Vec3(pR[i][j].x, yCountour((-rms_scaled)+freq-mountainAngle*i+freq_function(i, j), i, hIt-1), pR[i][j].z);
+      //float v1 = dot(e, gravity);
+      pR[i][j] = pR[i][j].plus(gravity.times(dt));
+      if (pR[i][j].y > 0) {
+        pR[i][j].y = 0;
+      }
+    }
+  }
+  if (waveCt <= 0) {
+    waveCt = 127;
+  } else {
+    waveCt-=2;
+  }
+
+  //OBSTACLE ANIMATIONS
+  for (int i=1; i<numObstacles; i++) {
+    if (obsPos[i] != nullVector) {
+      obsPos[i] = obsPos[i].plus(new Vec3(0, 0, -1000).times(dt));
+      if (obsPos[i].z < 0) {
+        obsPos[i] = nullVector;
+      }
+    }
+  }
+}
+float offset = 0;
+float yCountour(float y, int length, int size) {
+  float rand = random(2);
+  float value;
+  if (rand > 1) {
+    value = -1*(abs(length-size/2)-size/2)*y;
+  } else {
+    value = 0.25*length*(size-length)*y;
+  }
+  if (value>0) {
+    value = 0;
+  }
+  return value;
+}
+
+float freq_function(int i, int j) {
+  if (waveCt == j && j > 3 && j < 125) {
+    freq_snapshot = -sum[1]*height*scale;
+      pL[i][j+1].y = yCountour(0.75*freq_snapshot, i, 8);
+      pL[i][j-1].y = yCountour(0.75*freq_snapshot, i, 8);
+      pL[i][j+2].y = yCountour(0.5*freq_snapshot, i, 8);
+       pL[i][j-2].y = yCountour(0.5*freq_snapshot, i, 8);
+      pL[i][j+3].y = yCountour(0.25*freq_snapshot, i, 8);
+      pL[i][j-3].y = yCountour(0.25*freq_snapshot, i, 8);
+      pR[i][j+1].y = yCountour(0.75*freq_snapshot, i, 8);
+      pR[i][j-1].y = yCountour(0.75*freq_snapshot, i, 8);
+      pR[i][j+2].y = yCountour(0.5*freq_snapshot, i, 8);
+      pR[i][j-2].y = yCountour(0.5*freq_snapshot, i, 8);
+      pR[i][j+3].y = yCountour(0.25*freq_snapshot, i, 8);
+      pR[i][j-3].y = yCountour(0.25*freq_snapshot, i, 8);
+  } else {
+    freq_snapshot = 0;
+  }
+  return freq_snapshot;
+}
+
+void menu() {
+  sample.stop();
+  background(bg);
+  update(1.0/frameRate);
+  //camera.Update(1.0/frameRate);
+  pushMatrix();
+  translate(200, 200+400);
+  fill(0);
+  stroke(color(200, 20, 200));
+  rect(0, 0, 200, 50);
+  popMatrix();
+
+  pushMatrix();
+  translate(width/2-600, -100);
+  image(logo, 200, 50);
+  popMatrix();
+
+  pushMatrix();
+  translate(240, 135+400);
+  textFont(f, 40);
+  fill(255);
+  text("Start", 10, 100);
+  popMatrix();
+
+  pushMatrix();
+  translate(600, 200+400);
+  fill(0);
+  stroke(color(200, 20, 200));
+  rect(0, 0, 200, 50);
+  popMatrix();
+
+  pushMatrix();
+  translate(600, 135+400);
+  textFont(f, 40);
+  fill(255);
+  text("Settings", 10, 100);
+  popMatrix();
+}
+
+void runGame() {
+  score = millis();
+  background(bg);
+  if (rickRollSwitch == true) {
+    for (int i=0; i<50; i++) {
+      for (int j=0; j<50; j++) {
+        pushMatrix();
+        translate(2000-500*(j), -500*(i), -4000);
+        image(rickRollFrame[rickRollFrameCt], 500, 500);
+        popMatrix();
+      }
+    }
+  }
+  camera.Update(1.0/frameRate);
+  update(1/frameRate);
+  println(frameRate);
+  stroke(color(lineColorR, lineColorG, lineColorB));
+  ////SOUND
+
+  // Perform the analysis
+  fft.analyze();
+
+  // smooth the rms data by smoothing factor
+  sumAmp += (rms.analyze() - sumAmp) * smoothingFactor;
+
+  rms.analyze(); //return a value between 0 and 1. It's
+  // scaled to height/2 and then multiplied by a fixed scale factor
+  //pushMatrix();
+  float rms_scaled = sumAmp * (height/2) * 5;
+  //ellipse(width/2, height/2, rms_scaled, rms_scaled);
+  //popMatrix();
+
+  //for (int i = 0; i < bands; i++) {
+  //  // Smooth the FFT spectrum data by smoothing factor
+  //  sum[i] += (fft.spectrum[i] - sum[i]) * smoothingFactor;
+  //  pushMatrix();
+  //  fill(color(255, 0, 255));
+  //  // Draw the rectangles, adjust their height using the scale factor
+  //  rect(i*barWidth, height, barWidth, -sum[i]*height*scale);
+  //  popMatrix();
+  //}
+
+  //BaseTrack
+  pushMatrix();
+  shape(track);
+  popMatrix();
+
+  //draw obstacles
+  //draw coins
+  //draw power-ups
+
+  for (int i=0; i<numObstacles; i++) {
+    if (obsPos[i] != nullVector) {
+      pushMatrix();
+      translate(obsPos[i].x, obsPos[i].y, obsPos[i].z);
+      fill(0);
+      stroke(color(lineColorR, lineColorG, lineColorB));
+      box(25);
+      popMatrix();
+    }
+
+
+    pushMatrix();
+    translate(obsPos[i].x, obsPos[i].y, obsPos[i].z);
+    if (obsPos[i].x+12.5 > agentPos.x && agentPos.x > obsPos[i].x-12.5 && obsPos[i].z+100 > agentPos.z && agentPos.z > obsPos[i].z-100) {
+      stroke(color(255, 0, 0));
+      println("COLLISION DETECTED!");
+      state = 1;
+      println("object is here: ", obsPos[i].x, obsPos[i].y, obsPos[i].z, "user is here: ", agentPos.x, agentPos.y, agentPos.z);
+      stroke(255);
+    }
+    //if (obsPos[i].z < 50) {
+    //  println("OBSTACLE HAS PASSED!");
+    //  println("object is here: ", obsPos[i].x, obsPos[i].y, obsPos[i].z, "user is here: ", agentPos.x, agentPos.y, agentPos.z);
+    //}
+    fill(color(0, 255, 0));
+    circle(0, 0, 2);
+    popMatrix();
+  }
+
+  for (int i=0; i<hIt; i++) {
+    pushMatrix();
+    strokeWeight(2);
+    fill(255);
+    line(i*25, 0, 0, i*25, 0, 1000);
+    popMatrix();
+  }
+
+  //Track Lines (V)
+  for (int i=0; i<hIt; i++) {
+    pushMatrix();
+    strokeWeight(2);
+    fill(255);
+    line(i*25-200, 0, 0, i*25-200, 0, 1000);
+    popMatrix();
+  }
+
+  //Track Lines (H)
+  for (int i=0; i<vIt; i++) {
+    pushMatrix();
+    translate(0, 0, linePos);
+    strokeWeight(2);
+    fill(255);
+    line(0, 0, i*25, 200, 0, i*25);
+    popMatrix();
+  }
+
+  //Mountain dots
+  for (int i=0; i<hIt; i++) {
+    for (int j=0; j<vIt; j++) {
+      //interesting rendering when translate before push
+      float freq = -sum[i]*height*scale;
+
+      //Right dots
+      if (j>0) {
+        pushMatrix();
+        translate(pR[i][j].x, pR[i][j].y, pR[i][j].z);
+        fill(color(255, 0, 0));
+        //noStroke();
+        circle(0, 0, 0);
+        popMatrix();
+      }
+      //Connect Dots with Lines
+      if (j<vIt-1 && i<hIt-1) {
+        pushMatrix();
+        //stroke(255);
+        line(pR[i][j].x, pR[i][j].y, pR[i][j].z, pR[i][j+1].x, pR[i][j+1].y, pR[i][j+1].z);
+        line(pR[i][j].x, pR[i][j].y, pR[i][j].z, pR[i+1][j].x, pR[i+1][j].y, pR[i+1][j].z);
+        popMatrix();
+
+        //fill squares
+        beginShape();
+        fill(0);
+        vertex(pR[i][j].x, pR[i][j].y, pR[i][j].z);
+        vertex(pR[i+1][j].x, pR[i+1][j].y, pR[i+1][j].z);
+        vertex(pR[i+1][j+1].x, pR[i+1][j+1].y, pR[i+1][j+1].z);
+        vertex(pR[i][j+1].x, pR[i][j+1].y, pR[i][j+1].z);
+        endShape();
+      }
+
+      //Left dots
+      pushMatrix();
+      translate(pL[i][j].x, pL[i][j].y, pL[i][j].z);
+      fill(color(0, 0, 255));
+      //noStroke();
+      circle(0, 0, 0);
+      popMatrix();
+
+      if (j<vIt-1 && i<hIt-1) {
+        pushMatrix();
+        //stroke(255);
+        line(pL[i][j].x, pL[i][j].y, pL[i][j].z, pL[i][j+1].x, pL[i][j+1].y, pL[i][j+1].z);
+        line(pL[i][j].x, pL[i][j].y, pL[i][j].z, pL[i+1][j].x, pL[i+1][j].y, pL[i+1][j].z);
+        popMatrix();
+
+        beginShape();
+        fill(0);
+        vertex(pL[i][j].x, pL[i][j].y, pL[i][j].z);
+        vertex(pL[i+1][j].x, pL[i+1][j].y, pL[i+1][j].z);
+        vertex(pL[i+1][j+1].x, pL[i+1][j+1].y, pL[i+1][j+1].z);
+        vertex(pL[i][j+1].x, pL[i][j+1].y, pL[i][j+1].z);
+        endShape();
+      }
+    }
+  }
+  //Background graphics
+
+  //Kaleidoscope
+  offset+=PI/180;
+  if (rickRollSwitch == false) {
+    pushMatrix();
+    kSlice = createShape();
+    translate(100, 0, 4200);
+    kSlice.setFill(0);
+    kSlice.beginShape(TRIANGLE);
+    kSlice.texture(kImg);
+    kSlice.noStroke();
+    kSlice.vertex(0, 0, kImg.width/2, kImg.height/2);
+    kSlice.vertex(cos(angle)*kRadius, sin(angle)*kRadius, cos(angle+offset)*kRadius+kImg.width/2, sin(angle+offset)*kRadius+kImg.height/2);
+    kSlice.vertex(cos(-angle)*kRadius, sin(-angle)*kRadius, cos(-angle+offset)*kRadius+kImg.width/2, sin(-angle+offset)*kRadius+kImg.height/2);
+    kSlice.endShape();
+    for (int i = 0; i < slices; i++) {
+      rotate(angle*2);
+      shape(kSlice);
+    }
+    popMatrix();
+
+    //Rings
+    for (int i=1; i<50; i++) {
+      pushMatrix();
+      translate(100, 0, 4100);
+      stroke(color(ringR-0.5*i, ringG-i, ringB));
+      noFill();
+      strokeWeight(5);
+      circle(0, 0, (rms_scaled/2+(i*50))*2);
+      stroke(255);
+      popMatrix();
+    }
+  }
+
+  //pushMatrix();
+  fill(255);
+  textSize(40);
+  hudText("Hello");
+  //popMatrix();
+}
+
+void gameOver() {
+  score = endTime - startTime;
+  background(0);
+  pushMatrix();
+  fill(255);
+  text("GAME OVER", width/2-100, height/2-100);
+  popMatrix();
+
+  pushMatrix();
+  translate(width/2-125, height/2);
+  fill(100, 20, 100);
+  rect(0, 0, 200, 50);
+  popMatrix();
+
+  pushMatrix();
+  fill(255);
+  textSize(24);
+  text("Score: "+score, width/2-100, height/2-60);
+  popMatrix();
+
+  pushMatrix();
+  fill(255);
+  textSize(24);
+  text("Try Again", width/2-80, height/2+30);
+  popMatrix();
+}
+
+void draw() {
+  if (200<mouseX && mouseX<400 && mouseY>600 && mouseY<650 && mousePressed && state == -1) {
+    state = 0;
+    mode = 1;
+  }
+
+  if (width/2-125<mouseX && width/2-200<400 && mouseY>height/2 && mouseY<height/2+50 && mousePressed && state == 1) {
+    state = 0;
+    mode = 1;
+    endTime = 0;
+    camera.reset(resetPos, resetTheta, resetPhi);
+  }
+  switch(state) {
+  case -1:
+    menu();
+    break;
+  case 0:
+    runGame();
+    break;
+  case 1:
+    gameOver();
+    break;
+  default:
+    break;
+  }
+  //pushMatrix();
+  //fill(255);
+  //textSize(40);
+  //showTextInHUD("Hello");
+  //popMatrix();
+}
+
+void hudText(String str) {
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  fill(255);
+  textMode(MODEL);
+  if (str!=null)
+    text(str, 20, 20);
+  hint(ENABLE_DEPTH_TEST);
+}
+
+class Camera
+{
+  Camera()
+  {
+    position      = new PVector(agentPos.x, agentPos.y, agentPos.z); // initial position
+    theta         = agentTheta; // rotation around Y axis. Starts with forward direction as ( 0, 0, -1 )
+    phi           = agentPhi; // rotation around X axis. Starts with up direction as ( 0, 1, 0 )
+    moveSpeed     = 100;
+    turnSpeed     = 1.57; // radians/sec
+
+    // dont need to change these
+    negativeMovement = new PVector( 0, 0, 0 );
+    positiveMovement = new PVector( 0, 0, 0 );
+    negativeTurn     = new PVector( 0, 0 ); // .x for theta, .y for phi
+    positiveTurn     = new PVector( 0, 0 );
+    fovy             = PI / 4;
+    aspectRatio      = width / (float) height;
+    nearPlane        = 0.1;
+    farPlane         = 10000;
+  }
+
+  void reset(Vec3 pos, float nTheta, float nPhi) {
+    position = new PVector(pos.x, pos.y, pos.z);
+    theta = nTheta;
+    phi = nPhi;
+  }
+
+  void Update(float dt)
+  {
+    theta += turnSpeed * ( negativeTurn.x + positiveTurn.x)*dt;
+
+    // cap the rotation about the X axis to be less than 90 degrees to avoid gimble lock
+    float maxAngleInRadians = 85 * PI / 180;
+    phi = min( maxAngleInRadians, max( -maxAngleInRadians, phi + turnSpeed * ( negativeTurn.y + positiveTurn.y ) * dt ) );
+
+    // re-orienting the angles to match the wikipedia formulas: https://en.wikipedia.org/wiki/Spherical_coordinate_system
+    // except that their theta and phi are named opposite
+    float t = theta + PI / 2;
+    float pos = phi + PI / 2;
+    PVector forwardDir = new PVector( sin( pos ) * cos( t ), cos( pos ), -sin( pos ) * sin ( t ) );
+    PVector upDir      = new PVector( sin( phi ) * cos( t ), cos( phi ), -sin( t ) * sin( phi ) );
+    PVector rightDir   = new PVector( cos( theta ), 0, -sin( theta ) );
+    PVector velocity   = new PVector( negativeMovement.x + positiveMovement.x, negativeMovement.y + positiveMovement.y, negativeMovement.z + positiveMovement.z );
+    position.add( PVector.mult( forwardDir, moveSpeed * velocity.z * dt ) );
+    position.add( PVector.mult( upDir, moveSpeed * velocity.y * dt ) );
+    position.add( PVector.mult( rightDir, moveSpeed * velocity.x * dt ) );
+    if (mode == 1) {
+      if (position.x > 187.5) {
+        position.x = 187.5;
+      }
+      if (position.x < 12.5) {
+        position.x = 12.5;
+      }
+    }
+    agentPos = new Vec3(position.x, position.y, position.z);
+    aspectRatio = width / (float) height;
+    perspective( fovy, aspectRatio, nearPlane, farPlane );
+    camera( position.x, position.y, position.z,
+      position.x + forwardDir.x, position.y + forwardDir.y, position.z + forwardDir.z,
+      upDir.x, upDir.y, upDir.z );
+    println(position.x, position.y, position.z, "theta: ", theta, "phi: ", phi);
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyPressed()
+  {
+    if (mode == 0) {
+      if ( key == 'w' ) positiveMovement.z = 1;
+      if ( key == 's' ) negativeMovement.z = -1;
+      if ( key == 'a' ) negativeMovement.x = -1;
+      if ( key == 'd' ) positiveMovement.x = 1;
+      if ( key == 'q' ) positiveMovement.y = 1;
+      if ( key == 'e' ) negativeMovement.y = -1;
+
+      if ( keyCode == LEFT )  negativeTurn.x = 1;
+      if ( keyCode == RIGHT ) positiveTurn.x = -1;
+      if ( keyCode == UP )    positiveTurn.y = 1;
+      if ( keyCode == DOWN )  negativeTurn.y = -1;
+    } else {
+      if ( key == 'a' ) negativeMovement.x = -1;
+      if ( key == 'd' ) positiveMovement.x = 1;
+    }
+  }
+
+  // only need to change if you want difrent keys for the controls
+  void HandleKeyReleased()
+  {
+    if ( key == 'w' ) positiveMovement.z = 0;
+    if ( key == 'q' ) positiveMovement.y = 0;
+    if ( key == 'd' ) positiveMovement.x = 0;
+    if ( key == 'a' ) negativeMovement.x = 0;
+    if ( key == 's' ) negativeMovement.z = 0;
+    if ( key == 'e' ) negativeMovement.y = 0;
+
+    if ( keyCode == LEFT  ) negativeTurn.x = 0;
+    if ( keyCode == RIGHT ) positiveTurn.x = 0;
+    if ( keyCode == UP    ) positiveTurn.y = 0;
+    if ( keyCode == DOWN  ) negativeTurn.y = 0;
+  }
+
+  // only necessary to change if you want different start position, orientation, or speeds
+  PVector position;
+  float theta;
+  float phi;
+  float moveSpeed;
+  float turnSpeed;
+
+  // probably don't need / want to change any of the below variables
+  float fovy;
+  float aspectRatio;
+  float nearPlane;
+  float farPlane;
+  PVector negativeMovement;
+  PVector positiveMovement;
+  PVector negativeTurn;
+  PVector positiveTurn;
+};
+public class Vec3 {
+  public float x, y, z;
+
+  public Vec3(float x, float y, float z){
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+
+  public String toString(){
+    return "(" + x+ "," + y +"," + z + ")";
+  }
+
+  public float length(){
+    return sqrt(x*x+y*y+z*z);
+  }
+
+  public Vec3 plus(Vec3 rhs){
+    return new Vec3(x+rhs.x, y+rhs.y, z+rhs.z);
+  }
+
+  public void add(Vec3 rhs){
+    x += rhs.x;
+    y += rhs.y;
+    z += rhs.z;
+  }
+
+  public Vec3 minus(Vec3 rhs){
+    return new Vec3(x-rhs.x, y-rhs.y, z-rhs.z);
+  }
+
+  public void subtract(Vec3 rhs){
+    x -= rhs.x;
+    y -= rhs.y;
+    z -= rhs.z;
+  }
+
+  public Vec3 times(float rhs){
+    return new Vec3(x*rhs, y*rhs, z*rhs);
+  }
+
+  public void mul(float rhs){
+    x *= rhs;
+    y *= rhs;
+    z *= rhs;
+  }
+
+  public void normalize(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    if(magnitude==0.0){
+      println("Warning: zero vector magnitude --divide by zero not permitted");
+    }else{
+      x /= magnitude;
+      y /= magnitude;
+      z /= magnitude;
+    }
+  }
+
+  public Vec3 normalized(){
+    float magnitude = sqrt(x*x + y*y + z*z);
+    return new Vec3(x/magnitude, y/magnitude, z/magnitude);
+  }
+
+  public float distanceTo(Vec3 rhs){
+    float dx = rhs.x - x;
+    float dy = rhs.y - y;
+    float dz = rhs.z - z;
+    return sqrt(dx*dx + dy*dy+ dz*dz);
+  }
+}
+
+Vec3 interpolate(Vec3 a, Vec3 b, float t){
+  return a.plus((b.minus(a)).times(t));
+}
+
+float dot(Vec3 a, Vec3 b){
+  return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+Vec3 cross(Vec3 a, Vec3 b){
+  float j = a.y*b.z - a.z*b.y;
+  float k = a.z*b.x - a.x*b.z;
+  float l = a.x*b.y - a.y*b.x;
+  return new Vec3(j,k,l);
+}
+
+Vec3 projAB(Vec3 a, Vec3 b){
+  return b.times(a.x*b.x + a.y*b.y + a.z*b.z);
+}
